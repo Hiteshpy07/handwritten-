@@ -128,6 +128,8 @@ for result in search_results.points:  # 👈 iterate over .points
 things to improve in this code 
 
 1. prompt- give a m=automated prompt , just staright convert the text to md , but can asdd falbacks for text and diagrams , from gemini vision to ocr model, etc to increase efficiency
+1-ans-there are special multi-modal models -CLIP which can handle both tex and images , the ocr and gemini vision is not a accurate path
+  The better way is not using OCR and Gemini vision differently. A more optimized way is using a CLIP model, which is both vision transformer and text transformer. I will send the handwritten PDF and separate handwritings because CLIP is not very good for detecting handwriting and converting it into texts and vectors. So, what I did is I will separate the images and give it to CLIP vision transformer, and I will separate the handwriting part and give it to OCR models like Indra OCR, which will convert it into perfect and very accurate typed texts, which will be then converted into vectors, and the images will be converted into vectors by vision transformer. This is the plan for me.
 2. chunk size
 3. chunk overlap
 experiment cthe chunck size and chunk overlap , adn find out th seett pint with most efficent way and accurate
