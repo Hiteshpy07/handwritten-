@@ -40,3 +40,6 @@ def pdf_to_images(pdf_path):
         pix.save(img_path)
         page_images.append(img_path)
     return page_images
+
+
+    # is it storing the images locally or what? i need to send the path of each image for vision transformr and text trnasformer
