@@ -1,5 +1,4 @@
-from hpack import struct
-from yaml import FullLoader
+
 # from pdf2image import convert_from_path, convert_from_bytes
 # from pdf2image.exceptions import (
 #     PDFInfoNotInstalledError,
@@ -9,20 +8,6 @@ from yaml import FullLoader
 
 import fitz  # PyMuPDF
 import cv2
-
-import os 
-import uuid
-from dotenv import load_dotenv
-from google import genai
-
-
-from langchain_text_splitters import MarkdownHeaderTextSplitter
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-
-from sentence_transformers import SentenceTransformer
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
 
 # def pdf_to_image(path):
 #     images = convert_from_path(path,dpi=200)

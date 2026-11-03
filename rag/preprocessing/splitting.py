@@ -1,6 +1,5 @@
 # use OpenCV contour detection and adaptive thresholding to find bounding boxes around non-text elements.
 
-import fitz  # PyMuPDF
 import cv2
 import numpy as np
 from PIL import Image
