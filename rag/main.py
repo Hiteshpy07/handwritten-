@@ -210,5 +210,75 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 
+def indexing_pdf(pdf_path:str):
+    '''this function will work as a parent fucntion which takes pdf file link as input 
+    then brekas it in to images
+    pass is throung indra OCR to cahc the hanwritten texts 
+    adn pass throung cv2 edge detction to detct images and crop them 
+    and the images cropped will passed to the CLip MUTLIMODAL MODEL
+    and finall store the respective vectors embeddinsg to qdrant db '''
+    
+    print(f"converting th pdf:{pdf_path} to images")
+    images_frompdf=pdf_to_image(pdf_path)
 
+    text_points=[]
+    image_points=[]
+
+    for page_num , img_path in enumerate(images_frompdf, start=1):
+        print(f" -> Processing Page {page_num}: {img_path}")
+        #now will doOCR on this image to get the texts
+
+        page_md=process_text_path(img_path)#OCRed it 
+        #chunking th  markdown texts
+        if page_md.strip():
+            chunks = text_splitter.split_text(page_md)
+            #vectorising them
+            for id_chunk , chunk in enumerate(chunks):
+                vector=text_embedder.encode(chunk).tolist()
+                text_points.append(
+                    PointStruct(
+                        id=str(uuid.uuid4()),
+                        vector=vector,
+                        payload={
+                            "page": page_num,
+                            "chunk_id": id_chunk,
+                            "text": chunk,
+                            "source": pdf_path
+                        }
+                    )
+                )
+                #leran all this pointer structure path , what is happening here? how and in which format is it storing the embeddings in the text_points
+
+                #cropping images and converting it into embeddings
+        image_crops=extract_visual_crops(img_path)
+        for image_num,img in enumerate(image_crops):
+            #converting the diagram cropped in to embeddings using CLIP
+            img_embedding = get_clip_image_embedding(img["image"])
+         
+            #in case we need to e images cropped to show or judge the accurance of cv2 edge detction , saving it to disk
+            crop_save_path = f"./temp_images/p{page_num}_crop_{image_num}.png"
+            img["image"].save(crop_save_path)
+            
+
+
+            image_points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=img_embedding,
+                    payload={
+                        "page": page_num,
+                        "crop_path": crop_save_path,
+                        "bounding_box": img["box"],
+                        "source": pdf_path
+                    }
+                )
+            )
+
+
+        #now will feedd these embeddings to to the different collections in qdract vector db
+        
+
+
+
+            
 
