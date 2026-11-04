@@ -189,16 +189,16 @@ text_embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 # vector db cretaed
 #text embeddings db
-TEXT_COLLOECTION="handwritten text notes"
-qdrant=qdrant_client.recreate_collection(
-    collection_name=TEXT_COLLOECTION,
+TEXT_COLLECTION="handwritten text notes"
+qdrant_client.recreate_collection(
+    collection_name=TEXT_COLLECTION,
     vectors_config=VectorParams(size=384,distance=Distance.COSINE)#Learn more about this line , what does it says 
  )
 
 #images embedding collection
-IMG_COLLOECTION="handwritten images notes"
-qdrant=qdrant_client.recreate_collection(
-    collection_name=IMG_COLLOECTION,
+IMG_COLLECTION="handwritten images notes"
+qdrant_client.recreate_collection(
+    collection_name=IMG_COLLECTION,
     vectors_config=VectorParams(size=512,distance=Distance.COSINE)#Learn more about this line , what does it says 
  )
  #A COMMON DOUBT HERE? WHY IN CASE OF TEXT THE SIZE OF VECTOR IS 384 WHWEARS IN CASE OF IMAGES  IT IS 512???
@@ -276,7 +276,14 @@ def indexing_pdf(pdf_path:str):
 
 
         #now will feedd these embeddings to to the different collections in qdract vector db
+        print(f"Saving vectors into Qdrant...")
+        if text_points:
+            qdrant_client.upsert(collection_name=TEXT_COLLECTION, points=text_points)
+            print(f" Saved {len(text_points)} text chunks.")
         
+        elif image_points:
+            qdrant_client.upsert(collection_name=IMG_COLLECTION, points=image_points)
+            print(f" Saved {len(image_points)} visual diagram crops.")
 
 
 
