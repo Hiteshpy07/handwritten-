@@ -165,6 +165,7 @@ from preprocessing.splitting import extract_visual_crops
 
 from callingmodels.texttransformer import process_text_path
 from callingmodels.visiontransformer import get_clip_image_embedding
+from callingmodels.visiontransformer import get_clip_text_embedding
 from callingmodels.visiontransformer import process_visual_path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -286,6 +287,34 @@ def indexing_pdf(pdf_path:str):
             print(f" Saved {len(image_points)} visual diagram crops.")
 
 
+#taking user query 
+def query_frm_user(query:str):
+    print(f"processing user query")
+    query_embedding=text_embedder.encode(query).tolist()
 
-            
+    text_results = qdrant_client.query_points(
+        collection_name=TEXT_COLLECTION,
+        query=query_embedding,
+        limit=2
+    )# learn more about this tex_results , what if we increase the limits??
 
+
+    query_clip_vector = get_clip_text_embedding(query)
+    diagram_results = qdrant_client.query_points(
+        collection_name=IMG_COLLECTION,
+        query=query_clip_vector,
+        limit=1
+    )
+    
+    # not a good emigh way to output , need to rethink it 
+    # ok for now
+
+    # one more pointto think of - what if i ask query not only in tex , also add a matching and relevant image
+    #now only process text as query , add a image feature which can be passed thorugh the query
+    print("--- Top Relevant Diagram / Sketch ---")
+    for res in diagram_results.points:
+        print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
+        print(f"Found visual diagram saved at: {res.payload['crop_path']}")
+        
+
+        

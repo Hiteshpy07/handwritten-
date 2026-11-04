@@ -31,3 +31,15 @@ def process_visual_path(page_image_path):
             "crop_image": item["image"]
         })
     return embeddings_data
+
+#this fucntion is converting text query into 512-d , helps in better search
+def get_clip_text_embedding(text_query: str) -> list[float]:
+    """
+    Embeds a user query (e.g. 'diagram of heart') into the same 512-d space
+    to search for visual crops later!
+    """
+    inputs = processor(text=[text_query], return_tensors="pt", padding=True)
+    with torch.no_grad():
+        text_features = model.get_text_features(**inputs)
+    text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
+    return text_features.squeeze(0).tolist()
