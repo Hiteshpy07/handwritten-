@@ -318,3 +318,12 @@ def query_frm_user(query:str):
         
 
         
+if __name__ == "__main__":
+    pdf_file = "./test.pdf"
+
+    indexing_pdf(pdf_file)
+    while True:
+        question = input("\nAsk something about your notes (or 'quit'): ")
+        if question.lower() == 'quit':
+            break
+        query_frm_user(question)
