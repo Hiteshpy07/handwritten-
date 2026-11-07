@@ -157,7 +157,7 @@ import os
 import uuid
 from dotenv import load_dotenv
 
-
+from PIL import Image
 
 
 from preprocessing.loading import pdf_to_images
@@ -297,15 +297,11 @@ def query_frm_user(query: str):
     text_results = qdrant_client.query_points(
         collection_name=TEXT_COLLECTION,
         query=query_embedding,
-        limit=2
+        limit=3
     )
-
-    print("\n--- Top Relevant Text Notes ---")
-    if not text_results.points:
-        print("No text matches found.")
+    context_text=""
     for res in text_results.points:
-        print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
-        print(f"{res.payload['text']}\n")
+        context_text += f"\n[From Page {res.payload['page']}]:\n{res.payload['text']}\n"
 
     # 2. Search Diagrams
     query_clip_vector = get_clip_text_embedding(query)
@@ -315,24 +311,66 @@ def query_frm_user(query: str):
         limit=1
     )
     
-    print("--- Top Relevant Diagram / Sketch ---")
-    if not diagram_results.points:
-        print("No diagram matches found.")
-    for res in diagram_results.points:
-        print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
-        print(f"Found visual diagram saved at: {res.payload['crop_path']}\n")
+    # print("--- Top Relevant Diagram / Sketch ---")
+    # if not diagram_results.points:
+    #     print("No diagram matches found.")
+    # for res in diagram_results.points:
+    #     print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
+    #     print(f"Found visual diagram saved at: {res.payload['crop_path']}\n")
+    retrieved_image = None
+    diagram_info = ""
+    if diagram_results.points:
+        top_diagram = diagram_results.points[0]
+        crop_path = top_diagram.payload.get("crop_path")
+        if crop_path and os.path.exists(crop_path):
+            retrieved_image = Image.open(crop_path)
+            diagram_info = f"\nA relevant diagram from Page {top_diagram.payload['page']} is attached."
+            print(f"-> Attached diagram from: {crop_path}")
     
     # not a good emigh way to output , need to rethink it 
     # ok for now
+#--------DONE,No fragmented text: You won't see raw OCR cuts anymore; you get a polished, well-structured explanation.
+# True Multimodal Understanding: Because you pass the actual diagram image (retrieved_image) to Gemini alongside the notes, Gemini will explain the diagram in plain English (e.g. "As shown in the circuit diagram on Page 1, the commutator is connected to the armature coils...").
+# Accurate Citations: It will tell you exactly which page of your notebook to look at. 
+
+
+
+
+
 
     # one more pointto think of - what if i ask query not only in tex , also add a matching and relevant image
     #now only process text as query , add a image feature which can be passed thorugh the query
-    print("--- Top Relevant Diagram / Sketch ---")
-    for res in diagram_results.points:
-        print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
-        print(f"Found visual diagram saved at: {res.payload['crop_path']}")
-        
 
+
+    # print("--- Top Relevant Diagram / Sketch ---")
+    # for res in diagram_results.points:
+    #     print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
+    #     print(f"Found visual diagram saved at: {res.payload['crop_path']}")
+        
+    prompt = f"""
+You are an expert tutor helping a student understand their handwritten study notes.
+Answer the user's question clearly, thoroughly, and accurately based on the notes and the attached diagram (if any).
+Always cite the page numbers where you found the information (e.g. "[Page 2]").
+If the notes do not contain enough information to answer, state that honestly.
+---
+RELEVANT NOTES CONTEXT:
+{context_text}
+{diagram_info}
+---
+USER QUESTION: {query}
+"""
+
+    print("Generating AI response with Gemini...")  # 👈 Fixed: add 4 spaces indentation here!
+    content_payload = [prompt]
+    if retrieved_image:
+        content_payload.append(retrieved_image)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=content_payload
+    )
+    print("\n================ FINAL AI ANSWER ================")
+    print(response.text)
+    print("=================================================\n")
         
 if __name__ == "__main__":
     pdf_file = "./test2.pdf"
