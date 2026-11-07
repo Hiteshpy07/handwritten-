@@ -160,7 +160,7 @@ from dotenv import load_dotenv
 
 
 
-from preprocessing.loading import pdf_to_image
+from preprocessing.loading import pdf_to_images
 from preprocessing.splitting import extract_visual_crops
 
 from callingmodels.texttransformer import process_text_path
@@ -220,7 +220,7 @@ def indexing_pdf(pdf_path:str):
     and finall store the respective vectors embeddinsg to qdrant db '''
     
     print(f"converting th pdf:{pdf_path} to images")
-    images_frompdf=pdf_to_image(pdf_path)
+    images_frompdf=pdf_to_images(pdf_path)
 
     text_points=[]
     image_points=[]
@@ -257,6 +257,7 @@ def indexing_pdf(pdf_path:str):
             img_embedding = get_clip_image_embedding(img["image"])
          
             #in case we need to e images cropped to show or judge the accurance of cv2 edge detction , saving it to disk
+            os.makedirs("./temp_images", exist_ok=True) 
             crop_save_path = f"./temp_images/p{page_num}_crop_{image_num}.png"
             img["image"].save(crop_save_path)
             
@@ -288,23 +289,38 @@ def indexing_pdf(pdf_path:str):
 
 
 #taking user query 
-def query_frm_user(query:str):
-    print(f"processing user query")
-    query_embedding=text_embedder.encode(query).tolist()
-
+def query_frm_user(query: str):
+    print(f"processing user query: '{query}'")
+    
+    # 1. Search Text Notes
+    query_embedding = text_embedder.encode(query).tolist()
     text_results = qdrant_client.query_points(
         collection_name=TEXT_COLLECTION,
         query=query_embedding,
         limit=2
-    )# learn more about this tex_results , what if we increase the limits??
+    )
 
+    print("\n--- Top Relevant Text Notes ---")
+    if not text_results.points:
+        print("No text matches found.")
+    for res in text_results.points:
+        print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
+        print(f"{res.payload['text']}\n")
 
+    # 2. Search Diagrams
     query_clip_vector = get_clip_text_embedding(query)
     diagram_results = qdrant_client.query_points(
         collection_name=IMG_COLLECTION,
         query=query_clip_vector,
         limit=1
     )
+    
+    print("--- Top Relevant Diagram / Sketch ---")
+    if not diagram_results.points:
+        print("No diagram matches found.")
+    for res in diagram_results.points:
+        print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
+        print(f"Found visual diagram saved at: {res.payload['crop_path']}\n")
     
     # not a good emigh way to output , need to rethink it 
     # ok for now
@@ -319,7 +335,7 @@ def query_frm_user(query:str):
 
         
 if __name__ == "__main__":
-    pdf_file = "./test.pdf"
+    pdf_file = "./test2.pdf"
 
     indexing_pdf(pdf_file)
     while True:

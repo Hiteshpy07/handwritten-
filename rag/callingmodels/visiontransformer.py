@@ -13,11 +13,21 @@ processor = CLIPProcessor.from_pretrained(model_name)
 def get_clip_image_embedding(pil_image):
     """Generates a normalized vector embedding for a diagram or doodle using CLIP."""
     inputs = processor(images=pil_image, return_tensors="pt")
-    with torch.no_grad():
-        image_features = model.get_image_features(**inputs)
+    # with torch.no_grad():
+    #     image_features = model.get_image_features(**inputs)
 
+    # image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+    # return image_features.squeeze(0).numpy()
+
+    with torch.no_grad():
+        output = model.get_image_features(**inputs)
+        # Extract the tensor if output is a ModelOutput container
+        image_features = output.pooler_output if hasattr(output, "pooler_output") else output
+
+    # Normalize the tensor
     image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
-    return image_features.squeeze(0).numpy()
+    return image_features.squeeze(0).cpu().numpy().tolist()
+
 
 def process_visual_path(page_image_path):
     crops = extract_visual_crops(page_image_path)
@@ -40,6 +50,8 @@ def get_clip_text_embedding(text_query: str) -> list[float]:
     """
     inputs = processor(text=[text_query], return_tensors="pt", padding=True)
     with torch.no_grad():
-        text_features = model.get_text_features(**inputs)
+        output = model.get_text_features(**inputs)
+        text_features = output.pooler_output if hasattr(output, "pooler_output") else output
+
     text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
-    return text_features.squeeze(0).tolist()
+    return text_features.squeeze(0).cpu().numpy().tolist()
