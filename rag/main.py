@@ -289,81 +289,89 @@ def indexing_pdf(pdf_path:str):
 
 
 #taking user query 
-def query_frm_user(query: str):
-    print(f"processing user query: '{query}'")
+def query_frm_user(query: str = "", query_image_path: str = None):
+    print(f"\nProcessing user query: '{query}' | Image: {query_image_path}")
     
-    # 1. Search Text Notes
-    query_embedding = text_embedder.encode(query).tolist()
-    text_results = qdrant_client.query_points(
-        collection_name=TEXT_COLLECTION,
-        query=query_embedding,
-        limit=3
-    )
-    context_text=""
-    for res in text_results.points:
-        context_text += f"\n[From Page {res.payload['page']}]:\n{res.payload['text']}\n"
+    user_query_image = None
+    if query_image_path and os.path.exists(query_image_path):
+        user_query_image = Image.open(query_image_path)
+    
+    # -------------------------------------------------------------
+    # 1. TEXT SEARCH (in handwritten text notes collection)
+    # -------------------------------------------------------------
+    context_text = ""
+    search_text = query
+    
+    # If the user ONLY gave an image without text, ask Gemini to summarize its topic
+    if not search_text and user_query_image:
+        ocr_prompt = "What is the main topic or question shown in this image? Summarize in one short sentence."
+        temp_resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[user_query_image, ocr_prompt]
+        )
+        search_text = temp_resp.text.strip()
+        print(f"-> Extracted search topic from query image: '{search_text}'")
 
-    # 2. Search Diagrams
-    query_clip_vector = get_clip_text_embedding(query)
+    if search_text:
+        query_embedding = text_embedder.encode(search_text).tolist()
+        text_results = qdrant_client.query_points(
+            collection_name=TEXT_COLLECTION,
+            query=query_embedding,
+            limit=3
+        )
+        for res in text_results.points:
+            context_text += f"\n[From Page {res.payload['page']}]:\n{res.payload['text']}\n"
+
+    # -------------------------------------------------------------
+    # 2. DIAGRAM SEARCH (in handwritten images collection)
+    # -------------------------------------------------------------
+    # If user provided an image, embed IT directly with CLIP (Image-to-Image search)
+    # Otherwise, embed the text query with CLIP (Text-to-Image search)
+    if user_query_image:
+        diagram_query_vector = get_clip_image_embedding(user_query_image)
+    else:
+        diagram_query_vector = get_clip_text_embedding(query)
+
     diagram_results = qdrant_client.query_points(
         collection_name=IMG_COLLECTION,
-        query=query_clip_vector,
+        query=diagram_query_vector,
         limit=1
     )
     
-    # print("--- Top Relevant Diagram / Sketch ---")
-    # if not diagram_results.points:
-    #     print("No diagram matches found.")
-    # for res in diagram_results.points:
-    #     print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
-    #     print(f"Found visual diagram saved at: {res.payload['crop_path']}\n")
-    retrieved_image = None
+    retrieved_diagram_image = None
     diagram_info = ""
     if diagram_results.points:
         top_diagram = diagram_results.points[0]
         crop_path = top_diagram.payload.get("crop_path")
         if crop_path and os.path.exists(crop_path):
-            retrieved_image = Image.open(crop_path)
-            diagram_info = f"\nA relevant diagram from Page {top_diagram.payload['page']} is attached."
-            print(f"-> Attached diagram from: {crop_path}")
-    
-    # not a good emigh way to output , need to rethink it 
-    # ok for now
-#--------DONE,No fragmented text: You won't see raw OCR cuts anymore; you get a polished, well-structured explanation.
-# True Multimodal Understanding: Because you pass the actual diagram image (retrieved_image) to Gemini alongside the notes, Gemini will explain the diagram in plain English (e.g. "As shown in the circuit diagram on Page 1, the commutator is connected to the armature coils...").
-# Accurate Citations: It will tell you exactly which page of your notebook to look at. 
-
-
-
-
-
-
-    # one more pointto think of - what if i ask query not only in tex , also add a matching and relevant image
-    #now only process text as query , add a image feature which can be passed thorugh the query
-
-
-    # print("--- Top Relevant Diagram / Sketch ---")
-    # for res in diagram_results.points:
-    #     print(f"[Score: {res.score:.3f} | Page {res.payload['page']}]")
-    #     print(f"Found visual diagram saved at: {res.payload['crop_path']}")
+            retrieved_diagram_image = Image.open(crop_path)
+            diagram_info = f"\nA relevant diagram from Page {top_diagram.payload['page']} was retrieved from your notes."
+            print(f"-> Attached diagram from notes: {crop_path}")
         
     prompt = f"""
 You are an expert tutor helping a student understand their handwritten study notes.
 Answer the user's question clearly, thoroughly, and accurately based on the notes and the attached diagram (if any).
-Always cite the page numbers where you found the information (e.g. "[Page 2]").
-If the notes do not contain enough information to answer, state that honestly.
+
+- If the user uploaded a screenshot/image, explain what is shown and connect it to the handwritten notes.
+- If a relevant diagram was retrieved from notes, reference it in your explanation.
+- Always cite the page numbers where you found the information (e.g. "[Page 2]").
+- If the notes do not contain enough information to answer, state that honestly.
+
 ---
 RELEVANT NOTES CONTEXT:
 {context_text}
 {diagram_info}
 ---
-USER QUESTION: {query}
+USER QUESTION / REQUEST: {query if query else "Explain this image in the context of my notes."}
 """
 
-    print("Generating AI response with Gemini...")  # 👈 Fixed: add 4 spaces indentation here!
+    print("Generating AI response with Gemini...")
     content_payload = [prompt]
-    if retrieved_image:
-        content_payload.append(retrieved_image)
+    if user_query_image:
+        content_payload.append(user_query_image)
+    if retrieved_diagram_image:
+        content_payload.append(retrieved_diagram_image)
+
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=content_payload
@@ -380,4 +388,6 @@ if __name__ == "__main__":
         question = input("\nAsk something about your notes (or 'quit'): ")
         if question.lower() == 'quit':
             break
-        query_frm_user(question)
+        img_input = input("Enter path to a screenshot/image (or press Enter to skip): ").strip()
+        img_path = img_input if img_input else None
+        query_frm_user(query=question, query_image_path=img_path)
