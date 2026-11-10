@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+temp_images/
+qdrant_data/
+qdrant_storage/
+*.png
+test.pdf
+test2.pdf
+.DS_Store
+
