@@ -184,24 +184,24 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-qdrant_client= QdrantClient("http://localhost:6333") 
+qdrant_client = QdrantClient(path="./qdrant_data")
 
 text_embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# vector db cretaed
-#text embeddings db
-TEXT_COLLECTION="handwritten text notes"
-qdrant_client.recreate_collection(
-    collection_name=TEXT_COLLECTION,
-    vectors_config=VectorParams(size=384,distance=Distance.COSINE)#Learn more about this line , what does it says 
- )
+# vector db collections
+TEXT_COLLECTION = "handwritten text notes"
+if not qdrant_client.collection_exists(TEXT_COLLECTION):
+    qdrant_client.create_collection(
+        collection_name=TEXT_COLLECTION,
+        vectors_config=VectorParams(size=384, distance=Distance.COSINE)
+    )
 
-#images embedding collection
-IMG_COLLECTION="handwritten images notes"
-qdrant_client.recreate_collection(
-    collection_name=IMG_COLLECTION,
-    vectors_config=VectorParams(size=512,distance=Distance.COSINE)#Learn more about this line , what does it says 
- )
+IMG_COLLECTION = "handwritten images notes"
+if not qdrant_client.collection_exists(IMG_COLLECTION):
+    qdrant_client.create_collection(
+        collection_name=IMG_COLLECTION,
+        vectors_config=VectorParams(size=512, distance=Distance.COSINE)
+    )
  #A COMMON DOUBT HERE? WHY IN CASE OF TEXT THE SIZE OF VECTOR IS 384 WHWEARS IN CASE OF IMAGES  IT IS 512???
 
 
