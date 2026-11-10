@@ -180,28 +180,42 @@ from qdrant_client.models import Distance, VectorParams, PointStruct
 
 
 
-# initialling qdrant vectordb and gemini api 
+# initialize models lazily to fit in low-memory environments (Render Free 512MB RAM)
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-qdrant_client = QdrantClient(path="./qdrant_data")
+client = None
+def get_gemini_client():
+    global client
+    if client is None:
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return client
 
-text_embedder = SentenceTransformer("all-MiniLM-L6-v2")
+_qdrant_client = None
+def get_qdrant_client():
+    global _qdrant_client
+    if _qdrant_client is None:
+        _qdrant_client = QdrantClient(path="./qdrant_data")
+        if not _qdrant_client.collection_exists(TEXT_COLLECTION):
+            _qdrant_client.create_collection(
+                collection_name=TEXT_COLLECTION,
+                vectors_config=VectorParams(size=384, distance=Distance.COSINE)
+            )
+        if not _qdrant_client.collection_exists(IMG_COLLECTION):
+            _qdrant_client.create_collection(
+                collection_name=IMG_COLLECTION,
+                vectors_config=VectorParams(size=512, distance=Distance.COSINE)
+            )
+    return _qdrant_client
 
-# vector db collections
 TEXT_COLLECTION = "handwritten text notes"
-if not qdrant_client.collection_exists(TEXT_COLLECTION):
-    qdrant_client.create_collection(
-        collection_name=TEXT_COLLECTION,
-        vectors_config=VectorParams(size=384, distance=Distance.COSINE)
-    )
-
 IMG_COLLECTION = "handwritten images notes"
-if not qdrant_client.collection_exists(IMG_COLLECTION):
-    qdrant_client.create_collection(
-        collection_name=IMG_COLLECTION,
-        vectors_config=VectorParams(size=512, distance=Distance.COSINE)
-    )
+
+_text_embedder = None
+def get_text_embedder():
+    global _text_embedder
+    if _text_embedder is None:
+        _text_embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    return _text_embedder
  #A COMMON DOUBT HERE? WHY IN CASE OF TEXT THE SIZE OF VECTOR IS 384 WHWEARS IN CASE OF IMAGES  IT IS 512???
 
 
@@ -234,8 +248,9 @@ def indexing_pdf(pdf_path:str):
         if page_md.strip():
             chunks = text_splitter.split_text(page_md)
             #vectorising them
+            embedder = get_text_embedder()
             for id_chunk , chunk in enumerate(chunks):
-                vector=text_embedder.encode(chunk).tolist()
+                vector=embedder.encode(chunk).tolist()
                 text_points.append(
                     PointStruct(
                         id=str(uuid.uuid4()),
@@ -279,12 +294,13 @@ def indexing_pdf(pdf_path:str):
 
         #now will feedd these embeddings to to the different collections in qdract vector db
         print(f"Saving vectors into Qdrant...")
+        qc = get_qdrant_client()
         if text_points:
-            qdrant_client.upsert(collection_name=TEXT_COLLECTION, points=text_points)
+            qc.upsert(collection_name=TEXT_COLLECTION, points=text_points)
             print(f" Saved {len(text_points)} text chunks.")
         
-        elif image_points:
-            qdrant_client.upsert(collection_name=IMG_COLLECTION, points=image_points)
+        if image_points:
+            qc.upsert(collection_name=IMG_COLLECTION, points=image_points)
             print(f" Saved {len(image_points)} visual diagram crops.")
 
 
@@ -303,18 +319,20 @@ def query_frm_user(query: str = "", query_image_path: str = None):
     search_text = query
     
     # If the user ONLY gave an image without text, ask Gemini to summarize its topic
+    g_client = get_gemini_client()
     if not search_text and user_query_image:
         ocr_prompt = "What is the main topic or question shown in this image? Summarize in one short sentence."
-        temp_resp = client.models.generate_content(
+        temp_resp = g_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[user_query_image, ocr_prompt]
         )
         search_text = temp_resp.text.strip()
         print(f"-> Extracted search topic from query image: '{search_text}'")
 
+    qc = get_qdrant_client()
     if search_text:
-        query_embedding = text_embedder.encode(search_text).tolist()
-        text_results = qdrant_client.query_points(
+        query_embedding = get_text_embedder().encode(search_text).tolist()
+        text_results = qc.query_points(
             collection_name=TEXT_COLLECTION,
             query=query_embedding,
             limit=3
@@ -332,7 +350,7 @@ def query_frm_user(query: str = "", query_image_path: str = None):
     else:
         diagram_query_vector = get_clip_text_embedding(query)
 
-    diagram_results = qdrant_client.query_points(
+    diagram_results = qc.query_points(
         collection_name=IMG_COLLECTION,
         query=diagram_query_vector,
         limit=1
@@ -372,7 +390,7 @@ USER QUESTION / REQUEST: {query if query else "Explain this image in the context
     if retrieved_diagram_image:
         content_payload.append(retrieved_diagram_image)
 
-    response = client.models.generate_content(
+    response = g_client.models.generate_content(
         model="gemini-2.5-flash",
         contents=content_payload
     )

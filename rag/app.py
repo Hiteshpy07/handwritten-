@@ -6,13 +6,13 @@ from PIL import Image
 from main import (
     indexing_pdf,
     query_frm_user,
-    text_embedder,
-    qdrant_client,
+    get_text_embedder,
+    get_qdrant_client,
+    get_gemini_client,
     TEXT_COLLECTION,
     IMG_COLLECTION,
     get_clip_image_embedding,
-    get_clip_text_embedding,
-    client
+    get_clip_text_embedding
 )
 
 st.set_page_config(
@@ -105,10 +105,14 @@ if user_prompt:
             user_query_image = Image.open(saved_query_img_path) if saved_query_img_path else None
             search_text = user_prompt
 
+            g_client = get_gemini_client()
+            qc = get_qdrant_client()
+            embedder = get_text_embedder()
+
             # 1. Text Search in Qdrant
             if not search_text and user_query_image:
                 ocr_prompt = "What is the main topic or question shown in this image? Summarize in one short sentence."
-                temp_resp = client.models.generate_content(
+                temp_resp = g_client.models.generate_content(
                     model="gemini-2.5-flash",
                     contents=[user_query_image, ocr_prompt]
                 )
@@ -116,8 +120,8 @@ if user_prompt:
 
             context_text = ""
             if search_text:
-                query_embedding = text_embedder.encode(search_text).tolist()
-                text_results = qdrant_client.query_points(
+                query_embedding = embedder.encode(search_text).tolist()
+                text_results = qc.query_points(
                     collection_name=TEXT_COLLECTION,
                     query=query_embedding,
                     limit=3
@@ -131,7 +135,7 @@ if user_prompt:
             else:
                 diagram_query_vector = get_clip_text_embedding(user_prompt)
 
-            diagram_results = qdrant_client.query_points(
+            diagram_results = qc.query_points(
                 collection_name=IMG_COLLECTION,
                 query=diagram_query_vector,
                 limit=1
@@ -171,7 +175,7 @@ USER QUESTION / REQUEST: {user_prompt}
             if retrieved_diagram_image:
                 content_payload.append(retrieved_diagram_image)
 
-            response = client.models.generate_content(
+            response = g_client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=content_payload
             )

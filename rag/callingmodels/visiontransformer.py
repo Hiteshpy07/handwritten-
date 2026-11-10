@@ -1,33 +1,30 @@
-# no the visual_crops i got will passed thorugh the clip model and will be turened to embeddings here, a lot more efficient that google gemini vioson and ocr models inc ase of diagrams , pcitures etcd
-
-
 import torch
-from transformers import CLIPProcessor, CLIPModel #clip model import
+from transformers import CLIPProcessor, CLIPModel
 from preprocessing.splitting import extract_visual_crops
 
-# Load pre-trained CLIP model and processor
-model_name = "openai/clip-vit-base-patch32"
-model = CLIPModel.from_pretrained(model_name)
-processor = CLIPProcessor.from_pretrained(model_name)
+# Global cache so we don't reload multiple times
+_clip_model = None
+_clip_processor = None
+
+def get_clip_models():
+    global _clip_model, _clip_processor
+    if _clip_model is None or _clip_processor is None:
+        model_name = "openai/clip-vit-base-patch32"
+        _clip_model = CLIPModel.from_pretrained(model_name, low_cpu_mem_usage=True)
+        _clip_processor = CLIPProcessor.from_pretrained(model_name)
+    return _clip_model, _clip_processor
 
 def get_clip_image_embedding(pil_image):
-    """Generates a normalized vector embedding for a diagram or doodle using CLIP."""
+    """Generates a normalized 512-d vector embedding for a diagram using CLIP."""
+    model, processor = get_clip_models()
     inputs = processor(images=pil_image, return_tensors="pt")
-    # with torch.no_grad():
-    #     image_features = model.get_image_features(**inputs)
-
-    # image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
-    # return image_features.squeeze(0).numpy()
 
     with torch.no_grad():
         output = model.get_image_features(**inputs)
-        # Extract the tensor if output is a ModelOutput container
         image_features = output.pooler_output if hasattr(output, "pooler_output") else output
 
-    # Normalize the tensor
     image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
     return image_features.squeeze(0).cpu().numpy().tolist()
-
 
 def process_visual_path(page_image_path):
     crops = extract_visual_crops(page_image_path)
@@ -42,12 +39,9 @@ def process_visual_path(page_image_path):
         })
     return embeddings_data
 
-#this fucntion is converting text query into 512-d , helps in better search
 def get_clip_text_embedding(text_query: str) -> list[float]:
-    """
-    Embeds a user query (e.g. 'diagram of heart') into the same 512-d space
-    to search for visual crops later!
-    """
+    """Embeds a user query into the 512-d CLIP space."""
+    model, processor = get_clip_models()
     inputs = processor(text=[text_query], return_tensors="pt", padding=True)
     with torch.no_grad():
         output = model.get_text_features(**inputs)
