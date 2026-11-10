@@ -3,6 +3,7 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PORT=10000
 
 # Install system dependencies for OpenCV and PyMuPDF
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,7 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python packages
+# First install lightweight CPU-only PyTorch (crucial for 512MB RAM limit!)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
